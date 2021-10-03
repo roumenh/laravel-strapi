@@ -21,22 +21,28 @@ class LaravelStrapi
         $this->cacheTime = config('strapi.cacheTime');
     }
 
-    public function collection(string $type, $sortKey = 'id', $sortOrder = 'DESC', $limit = 20, $start = 0, $fullUrls = true): array
+    public function collection(string $type, $locale = 'en', $sortKey = 'id', $sortOrder = 'DESC', $limit = 20, $start = 0, $fullUrls = true): array
     {
         $url = $this->strapiUrl;
-        $cacheKey = self::CACHE_KEY . '.collection.' . $type . '.' . $sortKey . '.' . $sortOrder . '.' . $limit . '.' . $start;
+        $cacheKey = self::CACHE_KEY . '.collection.' . $type . '.' . $sortKey . '.' . $sortOrder . '.' . $limit . '.' . $start . '.' . $locale;
 
         // Fetch and cache the collection type
-        $collection = Cache::remember($cacheKey, $this->cacheTime, function () use ($url, $type, $sortKey, $sortOrder, $limit, $start) {
-            $response = Http::get($url . '/' . $type . '?_sort=' . $sortKey . ':' . $sortOrder . '&_limit=' . $limit . '&_start=' . $start);
-
+        $collection = Cache::remember($cacheKey, $this->cacheTime, function () use ($url, $type,  $sortKey, $sortOrder, $limit, $start, $locale) {
+            $response = Http::get($url . '/' . $type . '?_sort=' . $sortKey . ':' . $sortOrder . '&_limit=' . $limit . '&_start=' . $start . '&_locale=' .$locale);
             return $response->json();
+           
         });
 
         if (isset($collection['statusCode']) && $collection['statusCode'] === 403) {
             Cache::forget($cacheKey);
 
-            throw new PermissionDenied('Strapi returned a 403 Forbidden');
+            throw new PermissionDenied('Strapi returned a 403 Forbidden - '.$collection['message']);
+        }
+
+        if (isset($collection['statusCode']) && $collection['statusCode'] === 400) {
+            Cache::forget($cacheKey);
+
+            throw new PermissionDenied('Strapi returned a 400 Bad request - '.$collection['message']);
         }
 
         if (!is_array($collection)) {
@@ -52,6 +58,7 @@ class LaravelStrapi
         // Replace any relative URLs with the full path
         if ($fullUrls) {
             foreach ($collection as $key => $item) {
+                
                 if (!is_string($key)) {
                     continue;
                 }
@@ -111,13 +118,13 @@ class LaravelStrapi
         return $entry;
     }
 
-    public function entriesByField(string $type, string $fieldName, $fieldValue, $fullUrls = true): array
+    public function entriesByField(string $type, string $fieldName, $fieldValue, $locale = 'en', $limit = 20, $fullUrls = false): array
     {
         $url = $this->strapiUrl;
-        $cacheKey = self::CACHE_KEY . '.entryByField.' . $type . '.' . $fieldName . '.' . $fieldValue;
+        $cacheKey = self::CACHE_KEY . '.entryByField.' . $type . '.' . $fieldName . '.' . $fieldValue. '.' . $locale . '.' .$limit;
 
-        $entries = Cache::remember($cacheKey, $this->cacheTime, function () use ($url, $type, $fieldName, $fieldValue) {
-            $response = Http::get($url . '/' . $type . '?' . $fieldName . '=' . $fieldValue);
+        $entries = Cache::remember($cacheKey, $this->cacheTime, function () use ($url, $type, $fieldName, $fieldValue,$locale,$limit) {
+            $response = Http::get($url . '/' . $type . '?' . $fieldName . '=' . $fieldValue . '&_locale=' . $locale . '&_limit=' . $limit);
 
             return $response->json();
         });
@@ -153,14 +160,15 @@ class LaravelStrapi
         return $entries;
     }
 
-    public function single(string $type, string $pluck = null, $fullUrls = true)
+    public function single(string $type, $locale = "en", string $pluck = null, $fullUrls = true)
     {
         $url = $this->strapiUrl;
-        $cacheKey = self::CACHE_KEY . '.single.' . $type;
+        $cacheKey = self::CACHE_KEY . '.single.' . $type . '.' . $locale;
 
         // Fetch and cache the collection type
-        $single = Cache::remember($cacheKey, $this->cacheTime, function () use ($url, $type) {
-            $response = Http::get($url . '/' . $type);
+        $single = Cache::remember($cacheKey, $this->cacheTime, function () use ($url, $type, $locale) {
+            $response = Http::get($url . '/' . $type . '?_locale=' . $locale);
+            //echo $url . '/' . $type . '?_locale=' . $locale;
 
             return $response->json();
         });
@@ -168,7 +176,12 @@ class LaravelStrapi
         if (isset($single['statusCode']) && $single['statusCode'] === 403) {
             Cache::forget($cacheKey);
 
-            throw new PermissionDenied('Strapi returned a 403 Forbidden');
+            throw new PermissionDenied('Strapi returned a 403 Forbidden - '.$collection['message']);
+        }
+        if (isset($collection['statusCode']) && $collection['statusCode'] === 400) {
+            Cache::forget($cacheKey);
+
+            throw new PermissionDenied('Strapi returned a 400 Bad request - '.$collection['message']);
         }
 
         if (! isset($single['id'])) {
